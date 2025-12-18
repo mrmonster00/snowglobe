@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Snowglobe</title>
 
-  <!-- iOS “app-like” full screen when added to Home Screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -13,19 +12,18 @@
     html, body { margin:0; height:100%; background:#000; overflow:hidden; }
     canvas { display:block; width:100vw; height:100vh; touch-action:manipulation; }
 
-    .hint {
+    .hint{
       position:fixed; left:12px; bottom:12px; right:12px;
-      color:#fff; font:14px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      opacity:.9;
-      background:rgba(0,0,0,.35); padding:10px 12px; border-radius:12px;
-      backdrop-filter: blur(6px);
+      color:#fff; font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      opacity:.92; background:rgba(0,0,0,.35);
+      padding:10px 12px; border-radius:12px; backdrop-filter: blur(6px);
     }
-    .btn {
+    .btn{
       position:fixed; top:12px; right:12px;
       color:#fff; font:14px system-ui; background:rgba(0,0,0,.35);
       border:1px solid rgba(255,255,255,.25); padding:10px 12px; border-radius:12px;
     }
-    .toggle {
+    .toggle{
       position:fixed; top:12px; left:12px;
       color:#fff; font:14px system-ui; background:rgba(0,0,0,.35);
       border:1px solid rgba(255,255,255,.25); padding:10px 12px; border-radius:12px;
@@ -35,26 +33,25 @@
 <body>
   <canvas id="c"></canvas>
   <button class="toggle" id="fitToggle">Fit: CONTAIN</button>
-  <button class="btn" id="enableMotion">Enable Shake</button>
-  <div class="hint" id="hint">Tap to shake ❄️ (On iPhone, press <b>Enable Shake</b> once.)</div>
+  <button class="btn" id="enableSensors">Enable Tilt/Shake</button>
+  <div class="hint" id="hint">
+    Tap to burst snow ❄️. Press <b>Enable Tilt/Shake</b> once (needed on iPhone).
+  </div>
 
 <script>
 (() => {
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d", { alpha: false });
-
   const hint = document.getElementById("hint");
-  const btn = document.getElementById("enableMotion");
+  const btn = document.getElementById("enableSensors");
   const fitToggle = document.getElementById("fitToggle");
 
-  // Put photo.png in the same GitHub repo folder as this index.html
+  // Image
   const img = new Image();
-  img.src = "photo.png";
+  img.src = "photo.png"; // must exist in same folder as index.html
 
-  // === IMAGE FIT MODE ===
-  // "contain" = no crop (may have bars)
-  // "cover"   = fill screen (crops)
-  let FIT_MODE = "contain";
+  // Fit mode
+  let FIT_MODE = "contain"; // "contain" or "cover"
   function updateFitLabel() {
     fitToggle.textContent = "Fit: " + (FIT_MODE === "contain" ? "CONTAIN" : "COVER");
   }
@@ -64,17 +61,8 @@
   });
   updateFitLabel();
 
-  // Snow particles
-  const flakes = [];
-  const MAX_FLAKES = 900;
-
+  // Canvas sizing
   let width = 0, height = 0, dpr = 1;
-
-  // Shake energy (tap or phone motion adds to it)
-  let burst = 0;
-  let wind = 0;
-  const gravity = 0.55;
-
   function resize() {
     dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     width = Math.floor(window.innerWidth * dpr);
@@ -82,96 +70,156 @@
     canvas.width = width;
     canvas.height = height;
   }
-
   window.addEventListener("resize", resize);
   window.addEventListener("orientationchange", () => setTimeout(resize, 300));
   resize();
 
-  function orientationHint() {
-    if (window.innerHeight > window.innerWidth) {
-      hint.innerHTML = "Tip: rotate to landscape for a wider view ❄️ (Tap or shake to make snow.)";
-    } else {
-      hint.innerHTML = "Tap to shake ❄️ (On iPhone, press <b>Enable Shake</b> once.)";
-    }
-  }
-  window.addEventListener("resize", orientationHint);
-  window.addEventListener("orientationchange", () => setTimeout(orientationHint, 300));
-  orientationHint();
+  // Snow system
+  const flakes = [];
+  const MAX_FLAKES = 950;
 
   function rand(min, max) { return Math.random() * (max - min) + min; }
 
-  function addFlake(count, xCenter = width / 2, yStart = -20 * dpr) {
-    for (let i = 0; i < count && flakes.length < MAX_FLAKES; i++) {
+  function addFlake(count, xCenter = width/2, yStart = -20*dpr) {
+    for (let i=0; i<count && flakes.length < MAX_FLAKES; i++) {
       const r = rand(1.2, 4.4) * dpr;
       flakes.push({
-        x: xCenter + rand(-width * 0.45, width * 0.45),
-        y: yStart + rand(-height * 0.25, 0),
+        x: xCenter + rand(-width*0.45, width*0.45),
+        y: yStart + rand(-height*0.25, 0),
         r,
-        vy: rand(0.3, 1.2) * dpr,
-        vx: rand(-0.35, 0.35) * dpr,
-        wob: rand(0, Math.PI * 2),
+        // velocity
+        vx: rand(-0.25, 0.25) * dpr,
+        vy: rand(0.15, 0.9) * dpr,
+        // wobble
+        wob: rand(0, Math.PI*2),
         wobSpeed: rand(0.006, 0.02),
-        opacity: rand(0.5, 0.95)
+        opacity: rand(0.55, 0.95)
       });
     }
   }
 
-  // Initial snow
-  addFlake(280, width / 2, rand(0, height));
+  // initial flakes
+  addFlake(300, width/2, rand(0, height));
 
+  // Burst
+  let burst = 0;
   function burstSnow(strength = 1) {
     burst = Math.min(2.0, burst + 0.55 * strength);
-    wind += rand(-1.6, 1.6) * dpr * strength;
-    addFlake(Math.floor(110 * strength), width / 2, -30 * dpr);
+    addFlake(Math.floor(120 * strength), width/2, -30*dpr);
   }
 
-  // Tap/click to burst
+  // Tap bursts
   function onTap(e) {
     const x = (e.touches ? e.touches[0].clientX : e.clientX) * dpr;
     burstSnow(1);
-    addFlake(60, x, -30 * dpr);
+    addFlake(70, x, -30*dpr);
   }
   canvas.addEventListener("click", onTap);
-  canvas.addEventListener("touchstart", onTap, { passive: true });
+  canvas.addEventListener("touchstart", onTap, { passive:true });
 
-  // Device motion (shake only)
+  // ===== TILT-DRIVEN GRAVITY VECTOR =====
+  // We compute a "down" direction based on phone orientation.
+  // tiltX -> horizontal pull, tiltY -> vertical pull.
+  let tiltX = 0; // -1..1 (left/right)
+  let tiltY = 1; // -1..1 (up/down) default down
+
+  // Tuning knobs
+  const BASE_FALL = 0.22;      // constant fall component (keeps motion even if flat)
+  const TILT_FORCE = 0.085;    // how strong tilt pulls flakes
+  const AIR_DRAG = 0.992;      // velocity damping (0.98-0.995)
+  const MAX_SPEED = 2.8;       // clamp velocity
+
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+  // Map beta/gamma to screen-relative x/y depending on current orientation
+  function handleOrientation(ev) {
+    const beta = ev.beta ?? 0;   // front/back tilt (-180..180)
+    const gamma = ev.gamma ?? 0; // left/right tilt (-90..90)
+
+    // Normalize to [-1,1]
+    const nb = clamp(beta / 45, -1, 1);
+    const ng = clamp(gamma / 45, -1, 1);
+
+    // Determine screen rotation (0, 90, 180, 270)
+    const angle = (screen.orientation && typeof screen.orientation.angle === "number")
+      ? screen.orientation.angle
+      : (typeof window.orientation === "number" ? window.orientation : 0);
+
+    // Convert to screen axes:
+    // We want tiltX: positive means pull to the right on screen.
+    //      tiltY: positive means pull down on screen.
+    if (angle === 0) {          // portrait
+      tiltX = ng;
+      tiltY = nb;
+    } else if (angle === 90) {  // landscape (clockwise)
+      tiltX = nb;
+      tiltY = -ng;
+    } else if (angle === -90 || angle === 270) { // landscape (counter-clockwise)
+      tiltX = -nb;
+      tiltY = ng;
+    } else {                    // 180 (upside down portrait)
+      tiltX = -ng;
+      tiltY = -nb;
+    }
+
+    // Keep a gentle downward bias even if flat
+    tiltY = clamp(tiltY, -1, 1);
+    tiltX = clamp(tiltX, -1, 1);
+  }
+
+  // Shake (devicemotion) for extra burst
   let lastShakeAt = 0;
   function handleMotion(ev) {
     const a = ev.accelerationIncludingGravity;
     if (!a) return;
-
     const ax = a.x || 0, ay = a.y || 0, az = a.z || 0;
-    const mag = Math.sqrt(ax * ax + ay * ay + az * az);
-
-    // typical gravity magnitude ~9.8; shaking spikes higher
+    const mag = Math.sqrt(ax*ax + ay*ay + az*az);
     const intensity = Math.max(0, mag - 11);
     const now = performance.now();
-
     if (intensity > 2.2 && now - lastShakeAt > 180) {
       lastShakeAt = now;
       burstSnow(Math.min(1.8, intensity / 6));
     }
   }
 
-  // iOS permission flow + Android support
+  // iOS permission gate
+  async function enableSensors() {
+    // iOS 13+ requires permission prompt on user gesture
+    const needsPerm =
+      (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") ||
+      (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function");
+
+    if (needsPerm) {
+      // request both if available
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== "granted") throw new Error("Orientation permission not granted");
+      }
+      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+        const r = await DeviceMotionEvent.requestPermission();
+        if (r !== "granted") throw new Error("Motion permission not granted");
+      }
+    }
+
+    window.addEventListener("deviceorientation", handleOrientation, true);
+    window.addEventListener("devicemotion", handleMotion, true);
+
+    btn.textContent = "Tilt/Shake Enabled";
+    btn.disabled = true;
+    hint.innerHTML = "Tilt your phone: snow falls “downhill” ❄️. Tap to burst.";
+  }
+
   btn.addEventListener("click", async () => {
     try {
-      if (typeof DeviceMotionEvent !== "undefined" &&
-          typeof DeviceMotionEvent.requestPermission === "function") {
-        const res = await DeviceMotionEvent.requestPermission();
-        if (res !== "granted") throw new Error("Permission not granted");
-      }
-      window.addEventListener("devicemotion", handleMotion);
-      btn.textContent = "Shake Enabled";
-      btn.disabled = true;
+      await enableSensors();
     } catch (e) {
-      btn.textContent = "Motion Blocked";
       console.warn(e);
-      alert("Motion access was blocked. You can still tap the screen to shake the snow.");
+      btn.textContent = "Sensors Blocked";
+      alert("Tilt/shake access was blocked. Tap still works for snow bursts.");
     }
   });
 
-  // ✅ Correct background fitting (no double-dpr)
+  // Background draw (correct scaling; no double-dpr)
   function drawBackground() {
     if (!img.complete || !img.naturalWidth) return;
 
@@ -180,7 +228,6 @@
 
     const sx = width / iw;
     const sy = height / ih;
-
     const scale = (FIT_MODE === "cover") ? Math.max(sx, sy) : Math.min(sx, sy);
 
     const dw = iw * scale;
@@ -191,10 +238,10 @@
 
     ctx.drawImage(img, dx, dy, dw, dh);
 
-    // Optional subtle vignette
+    // subtle vignette
     const g = ctx.createRadialGradient(
-      width / 2, height / 2, Math.min(width, height) * 0.18,
-      width / 2, height / 2, Math.max(width, height) * 0.70
+      width/2, height/2, Math.min(width,height)*0.18,
+      width/2, height/2, Math.max(width,height)*0.70
     );
     g.addColorStop(0, "rgba(0,0,0,0)");
     g.addColorStop(1, "rgba(0,0,0,0.30)");
@@ -208,31 +255,56 @@
 
     drawBackground();
 
-    // Decay burst & wind
+    // burst decay + add flakes while active
     burst *= 0.93;
-    wind *= 0.985;
+    if (burst > 0.05) addFlake(Math.floor(8 + 32 * burst), width/2, -30*dpr);
 
-    // Add a few flakes while burst is active
-    if (burst > 0.05) addFlake(Math.floor(8 + 30 * burst), width / 2, -30 * dpr);
+    // Gravity vector from tilt (screen-relative)
+    // Add a constant fall so it still snows when phone is flat
+    const gx = tiltX * TILT_FORCE * dpr;
+    const gy = (BASE_FALL + tiltY * TILT_FORCE) * dpr;
 
-    // Update + draw flakes
     for (let i = flakes.length - 1; i >= 0; i--) {
       const f = flakes[i];
 
+      // wobble
       f.wob += f.wobSpeed;
-      const wobX = Math.sin(f.wob) * 0.55 * dpr;
+      const wobX = Math.sin(f.wob) * 0.45 * dpr;
 
-      const fall = (gravity + f.vy) * (1 + burst * 1.25);
-      f.y += fall;
-      f.x += (f.vx + wind * 0.02) + wobX;
+      // Apply tilt-gravity + wobble
+      f.vx += gx + wobX * 0.002;
+      f.vy += gy;
 
-      if (f.y - f.r > height) {
-        f.y = -rand(10, 140) * dpr;
-        f.x = rand(0, width);
+      // Extra speed when burst is active
+      if (burst > 0.01) {
+        f.vx *= (1 + burst * 0.04);
+        f.vy *= (1 + burst * 0.06);
       }
-      if (f.x < -50 * dpr) f.x = width + 50 * dpr;
-      if (f.x > width + 50 * dpr) f.x = -50 * dpr;
 
+      // Drag + clamp
+      f.vx *= AIR_DRAG;
+      f.vy *= AIR_DRAG;
+      f.vx = clamp(f.vx, -MAX_SPEED*dpr, MAX_SPEED*dpr);
+      f.vy = clamp(f.vy, -MAX_SPEED*dpr, MAX_SPEED*dpr);
+
+      // integrate
+      f.x += f.vx;
+      f.y += f.vy;
+
+      // recycle from edges in the opposite direction of travel (feels natural)
+      if (f.x < -60*dpr) f.x = width + 60*dpr;
+      if (f.x > width + 60*dpr) f.x = -60*dpr;
+      if (f.y > height + 60*dpr) {
+        f.y = -rand(10, 120) * dpr;
+        f.x = rand(0, width);
+        f.vx = rand(-0.2, 0.2) * dpr;
+        f.vy = rand(0.15, 0.9) * dpr;
+      }
+      if (f.y < -120*dpr) {
+        f.y = height + 40*dpr;
+      }
+
+      // draw
       ctx.beginPath();
       ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255,255,255,${f.opacity})`;
@@ -244,7 +316,7 @@
 
   img.onload = () => requestAnimationFrame(step);
   img.onerror = () => {
-    alert("Could not load photo.png. Make sure photo.png is in the same folder as index.html in your GitHub repo.");
+    alert("Could not load photo.png. Ensure photo.png is in the same folder as index.html.");
     requestAnimationFrame(step);
   };
 })();
