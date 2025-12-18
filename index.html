@@ -2,29 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- Allow pinch zoom -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover" />
   <title>Snowglobe</title>
 
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
   <style>
-    html, body { margin:0; height:100%; background:#000; overflow:hidden; }
-    canvas { display:block; width:100vw; height:100vh; touch-action:manipulation; }
+    html, body { margin:0; height:100%; background:#000; }
+    /* DO NOT block pinch zoom */
+    canvas { display:block; width:100vw; height:100vh; touch-action:auto; }
 
-    .hint{
-      position:fixed; left:12px; bottom:12px; right:12px;
+    .hint {
+      position:fixed; left:12px; right:12px; bottom:12px;
       color:#fff; font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      opacity:.92; background:rgba(0,0,0,.35);
-      padding:10px 12px; border-radius:12px; backdrop-filter: blur(6px);
+      background:rgba(0,0,0,.35); padding:10px 12px; border-radius:12px;
+      backdrop-filter: blur(6px);
     }
-    .btn{
+    .btn {
       position:fixed; top:12px; right:12px;
-      color:#fff; font:14px system-ui; background:rgba(0,0,0,.35);
-      border:1px solid rgba(255,255,255,.25); padding:10px 12px; border-radius:12px;
-    }
-    .toggle{
-      position:fixed; top:12px; left:12px;
       color:#fff; font:14px system-ui; background:rgba(0,0,0,.35);
       border:1px solid rgba(255,255,255,.25); padding:10px 12px; border-radius:12px;
     }
@@ -32,281 +29,193 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <button class="toggle" id="fitToggle">Fit: CONTAIN</button>
-  <button class="btn" id="enableSensors">Enable Tilt/Shake</button>
-  <div class="hint" id="hint">
-    Tap to burst snow ❄️. Press <b>Enable Tilt/Shake</b> once (needed on iPhone).
-  </div>
+  <button class="btn" id="enableMotion">Enable Shake</button>
+  <div class="hint" id="hint">Image is always “contain” (no crop). Rotate phone to resize. Pinch-zoom works. Tap to burst snow ❄️</div>
 
 <script>
 (() => {
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d", { alpha: false });
+
   const hint = document.getElementById("hint");
-  const btn = document.getElementById("enableSensors");
-  const fitToggle = document.getElementById("fitToggle");
+  const btn = document.getElementById("enableMotion");
 
-  // Image
+  // Put photo.png in the same GitHub repo folder as index.html
   const img = new Image();
-  img.src = "photo.png"; // must exist in same folder as index.html
+  img.src = "photo.png";
 
-  // Fit mode
-  let FIT_MODE = "contain"; // "contain" or "cover"
-  function updateFitLabel() {
-    fitToggle.textContent = "Fit: " + (FIT_MODE === "contain" ? "CONTAIN" : "COVER");
-  }
-  fitToggle.addEventListener("click", () => {
-    FIT_MODE = (FIT_MODE === "contain") ? "cover" : "contain";
-    updateFitLabel();
-  });
-  updateFitLabel();
-
-  // Canvas sizing
+  // Canvas sizing (use visualViewport for iOS correctness)
   let width = 0, height = 0, dpr = 1;
+
+  function getViewportSizeCSS() {
+    // CSS pixels
+    const vv = window.visualViewport;
+    if (vv) return { w: vv.width, h: vv.height };
+    return { w: window.innerWidth, h: window.innerHeight };
+  }
+
   function resize() {
+    const { w, h } = getViewportSizeCSS();
+
+    // Limit DPR to keep it smooth
     dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-    width = Math.floor(window.innerWidth * dpr);
-    height = Math.floor(window.innerHeight * dpr);
+
+    width  = Math.floor(w * dpr);
+    height = Math.floor(h * dpr);
+
     canvas.width = width;
     canvas.height = height;
   }
-  window.addEventListener("resize", resize);
-  window.addEventListener("orientationchange", () => setTimeout(resize, 300));
+
+  // iOS sometimes fires these in odd order—listen to all
+  window.addEventListener("resize", () => {
+    resize();
+    // extra passes help on iOS rotate
+    setTimeout(resize, 150);
+    requestAnimationFrame(resize);
+  });
+
+  window.addEventListener("orientationchange", () => {
+    // iOS needs a delay after rotation to settle viewport
+    setTimeout(resize, 300);
+    setTimeout(resize, 650);
+  });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      resize();
+      requestAnimationFrame(resize);
+    });
+    window.visualViewport.addEventListener("scroll", () => {
+      // sometimes affects reported viewport after pinch-zoom
+      resize();
+    });
+  }
+
   resize();
 
-  // Snow system
+  // ===== Snow =====
   const flakes = [];
-  const MAX_FLAKES = 950;
+  const MAX_FLAKES = 800;
+  let burst = 0;
 
   function rand(min, max) { return Math.random() * (max - min) + min; }
 
   function addFlake(count, xCenter = width/2, yStart = -20*dpr) {
     for (let i=0; i<count && flakes.length < MAX_FLAKES; i++) {
-      const r = rand(1.2, 4.4) * dpr;
+      const r = rand(1.1, 4.0) * dpr;
       flakes.push({
         x: xCenter + rand(-width*0.45, width*0.45),
         y: yStart + rand(-height*0.25, 0),
         r,
-        // velocity
         vx: rand(-0.25, 0.25) * dpr,
-        vy: rand(0.15, 0.9) * dpr,
-        // wobble
+        vy: rand(0.25, 1.1) * dpr,
         wob: rand(0, Math.PI*2),
         wobSpeed: rand(0.006, 0.02),
-        opacity: rand(0.55, 0.95)
+        opacity: rand(0.5, 0.95),
       });
     }
   }
 
-  // initial flakes
-  addFlake(300, width/2, rand(0, height));
+  addFlake(260, width/2, rand(0, height));
 
-  // Burst
-  let burst = 0;
   function burstSnow(strength = 1) {
-    burst = Math.min(2.0, burst + 0.55 * strength);
-    addFlake(Math.floor(120 * strength), width/2, -30*dpr);
+    burst = Math.min(2.0, burst + 0.6 * strength);
+    addFlake(Math.floor(100 * strength), width/2, -30*dpr);
   }
 
-  // Tap bursts
-  function onTap(e) {
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) * dpr;
+  canvas.addEventListener("click", (e) => {
     burstSnow(1);
-    addFlake(70, x, -30*dpr);
-  }
-  canvas.addEventListener("click", onTap);
-  canvas.addEventListener("touchstart", onTap, { passive:true });
+    addFlake(60, (e.clientX||0) * dpr, -30*dpr);
+  });
 
-  // ===== TILT-DRIVEN GRAVITY VECTOR =====
-  // We compute a "down" direction based on phone orientation.
-  // tiltX -> horizontal pull, tiltY -> vertical pull.
-  let tiltX = 0; // -1..1 (left/right)
-  let tiltY = 1; // -1..1 (up/down) default down
-
-  // Tuning knobs
-  const BASE_FALL = 0.22;      // constant fall component (keeps motion even if flat)
-  const TILT_FORCE = 0.085;    // how strong tilt pulls flakes
-  const AIR_DRAG = 0.992;      // velocity damping (0.98-0.995)
-  const MAX_SPEED = 2.8;       // clamp velocity
-
-  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
-
-  // Map beta/gamma to screen-relative x/y depending on current orientation
-  function handleOrientation(ev) {
-    const beta = ev.beta ?? 0;   // front/back tilt (-180..180)
-    const gamma = ev.gamma ?? 0; // left/right tilt (-90..90)
-
-    // Normalize to [-1,1]
-    const nb = clamp(beta / 45, -1, 1);
-    const ng = clamp(gamma / 45, -1, 1);
-
-    // Determine screen rotation (0, 90, 180, 270)
-    const angle = (screen.orientation && typeof screen.orientation.angle === "number")
-      ? screen.orientation.angle
-      : (typeof window.orientation === "number" ? window.orientation : 0);
-
-    // Convert to screen axes:
-    // We want tiltX: positive means pull to the right on screen.
-    //      tiltY: positive means pull down on screen.
-    if (angle === 0) {          // portrait
-      tiltX = ng;
-      tiltY = nb;
-    } else if (angle === 90) {  // landscape (clockwise)
-      tiltX = nb;
-      tiltY = -ng;
-    } else if (angle === -90 || angle === 270) { // landscape (counter-clockwise)
-      tiltX = -nb;
-      tiltY = ng;
-    } else {                    // 180 (upside down portrait)
-      tiltX = -ng;
-      tiltY = -nb;
+  canvas.addEventListener("touchstart", (e) => {
+    // still allow pinch zoom; this just adds a burst on first touch
+    const t = e.touches && e.touches[0];
+    if (t) {
+      burstSnow(1);
+      addFlake(60, t.clientX * dpr, -30*dpr);
     }
+  }, { passive:true });
 
-    // Keep a gentle downward bias even if flat
-    tiltY = clamp(tiltY, -1, 1);
-    tiltX = clamp(tiltX, -1, 1);
-  }
-
-  // Shake (devicemotion) for extra burst
+  // Shake (optional)
   let lastShakeAt = 0;
   function handleMotion(ev) {
     const a = ev.accelerationIncludingGravity;
     if (!a) return;
-    const ax = a.x || 0, ay = a.y || 0, az = a.z || 0;
+    const ax = a.x||0, ay=a.y||0, az=a.z||0;
     const mag = Math.sqrt(ax*ax + ay*ay + az*az);
     const intensity = Math.max(0, mag - 11);
     const now = performance.now();
     if (intensity > 2.2 && now - lastShakeAt > 180) {
       lastShakeAt = now;
-      burstSnow(Math.min(1.8, intensity / 6));
+      burstSnow(Math.min(1.8, intensity/6));
     }
-  }
-
-  // iOS permission gate
-  async function enableSensors() {
-    // iOS 13+ requires permission prompt on user gesture
-    const needsPerm =
-      (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") ||
-      (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function");
-
-    if (needsPerm) {
-      // request both if available
-      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-        const r = await DeviceOrientationEvent.requestPermission();
-        if (r !== "granted") throw new Error("Orientation permission not granted");
-      }
-      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
-        const r = await DeviceMotionEvent.requestPermission();
-        if (r !== "granted") throw new Error("Motion permission not granted");
-      }
-    }
-
-    window.addEventListener("deviceorientation", handleOrientation, true);
-    window.addEventListener("devicemotion", handleMotion, true);
-
-    btn.textContent = "Tilt/Shake Enabled";
-    btn.disabled = true;
-    hint.innerHTML = "Tilt your phone: snow falls “downhill” ❄️. Tap to burst.";
   }
 
   btn.addEventListener("click", async () => {
     try {
-      await enableSensors();
+      if (typeof DeviceMotionEvent !== "undefined" &&
+          typeof DeviceMotionEvent.requestPermission === "function") {
+        const res = await DeviceMotionEvent.requestPermission();
+        if (res !== "granted") throw new Error("Permission not granted");
+      }
+      window.addEventListener("devicemotion", handleMotion, true);
+      btn.textContent = "Shake Enabled";
+      btn.disabled = true;
     } catch (e) {
-      console.warn(e);
-      btn.textContent = "Sensors Blocked";
-      alert("Tilt/shake access was blocked. Tap still works for snow bursts.");
+      btn.textContent = "Motion Blocked";
+      alert("Motion access blocked. Tap still works.");
     }
   });
 
-  // Background draw (correct scaling; no double-dpr)
-  function drawBackground() {
+  // ===== Background: ALWAYS CONTAIN (no crop) =====
+  function drawBackgroundContain() {
     if (!img.complete || !img.naturalWidth) return;
 
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
 
+    // NOTE: width/height are canvas pixels; iw/ih are image pixels
     const sx = width / iw;
     const sy = height / ih;
-    const scale = (FIT_MODE === "cover") ? Math.max(sx, sy) : Math.min(sx, sy);
+    const scale = Math.min(sx, sy); // <-- CONTAIN always
 
     const dw = iw * scale;
     const dh = ih * scale;
 
-    const dx = (width - dw) / 2;
+    const dx = (width  - dw) / 2;
     const dy = (height - dh) / 2;
 
     ctx.drawImage(img, dx, dy, dw, dh);
-
-    // subtle vignette
-    const g = ctx.createRadialGradient(
-      width/2, height/2, Math.min(width,height)*0.18,
-      width/2, height/2, Math.max(width,height)*0.70
-    );
-    g.addColorStop(0, "rgba(0,0,0,0)");
-    g.addColorStop(1, "rgba(0,0,0,0.30)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, width, height);
   }
 
   function step() {
     ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0,0,width,height);
 
-    drawBackground();
+    drawBackgroundContain();
 
-    // burst decay + add flakes while active
     burst *= 0.93;
-    if (burst > 0.05) addFlake(Math.floor(8 + 32 * burst), width/2, -30*dpr);
+    if (burst > 0.05) addFlake(Math.floor(6 + 22 * burst), width/2, -30*dpr);
 
-    // Gravity vector from tilt (screen-relative)
-    // Add a constant fall so it still snows when phone is flat
-    const gx = tiltX * TILT_FORCE * dpr;
-    const gy = (BASE_FALL + tiltY * TILT_FORCE) * dpr;
-
-    for (let i = flakes.length - 1; i >= 0; i--) {
+    for (let i=flakes.length-1; i>=0; i--) {
       const f = flakes[i];
-
-      // wobble
       f.wob += f.wobSpeed;
-      const wobX = Math.sin(f.wob) * 0.45 * dpr;
 
-      // Apply tilt-gravity + wobble
-      f.vx += gx + wobX * 0.002;
-      f.vy += gy;
+      const wobX = Math.sin(f.wob) * 0.55 * dpr;
+      f.y += f.vy * (1 + burst*0.8);
+      f.x += f.vx + wobX;
 
-      // Extra speed when burst is active
-      if (burst > 0.01) {
-        f.vx *= (1 + burst * 0.04);
-        f.vy *= (1 + burst * 0.06);
-      }
-
-      // Drag + clamp
-      f.vx *= AIR_DRAG;
-      f.vy *= AIR_DRAG;
-      f.vx = clamp(f.vx, -MAX_SPEED*dpr, MAX_SPEED*dpr);
-      f.vy = clamp(f.vy, -MAX_SPEED*dpr, MAX_SPEED*dpr);
-
-      // integrate
-      f.x += f.vx;
-      f.y += f.vy;
-
-      // recycle from edges in the opposite direction of travel (feels natural)
-      if (f.x < -60*dpr) f.x = width + 60*dpr;
-      if (f.x > width + 60*dpr) f.x = -60*dpr;
-      if (f.y > height + 60*dpr) {
+      if (f.y - f.r > height) {
         f.y = -rand(10, 120) * dpr;
         f.x = rand(0, width);
-        f.vx = rand(-0.2, 0.2) * dpr;
-        f.vy = rand(0.15, 0.9) * dpr;
       }
-      if (f.y < -120*dpr) {
-        f.y = height + 40*dpr;
-      }
+      if (f.x < -50*dpr) f.x = width + 50*dpr;
+      if (f.x > width + 50*dpr) f.x = -50*dpr;
 
-      // draw
       ctx.beginPath();
-      ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+      ctx.arc(f.x, f.y, f.r, 0, Math.PI*2);
       ctx.fillStyle = `rgba(255,255,255,${f.opacity})`;
       ctx.fill();
     }
@@ -315,10 +224,7 @@
   }
 
   img.onload = () => requestAnimationFrame(step);
-  img.onerror = () => {
-    alert("Could not load photo.png. Ensure photo.png is in the same folder as index.html.");
-    requestAnimationFrame(step);
-  };
+  img.onerror = () => alert("Could not load photo.png. Make sure it’s in the same repo folder as index.html.");
 })();
 </script>
 </body>
