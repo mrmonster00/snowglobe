@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Snow Globe</title>
+  <title>Snowglobe</title>
 
-  <!-- Optional: makes it feel like an app when added to iOS Home Screen -->
+  <!-- iOS “app-like” full screen when added to Home Screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -16,36 +16,31 @@
     .hint {
       position:fixed; left:12px; bottom:12px; right:12px;
       color:#fff; font:14px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      opacity:.88;
+      opacity:.9;
       background:rgba(0,0,0,.35); padding:10px 12px; border-radius:12px;
       backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
     }
-
     .btn {
       position:fixed; top:12px; right:12px;
-      color:#fff; font:14px system-ui;
-      background:rgba(0,0,0,.35);
-      border:1px solid rgba(255,255,255,.25);
-      padding:10px 12px; border-radius:12px;
+      color:#fff; font:14px system-ui; background:rgba(0,0,0,.35);
+      border:1px solid rgba(255,255,255,.25); padding:10px 12px; border-radius:12px;
     }
-
-    .btn:disabled { opacity:.6; }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
   <button class="btn" id="enableMotion">Enable Shake</button>
-  <div class="hint" id="hint">Tap/click to “shake” the globe. On iPhone, press <b>Enable Shake</b> once.</div>
+  <div class="hint" id="hint">Tap/click to shake the globe ❄️ (On iPhone, press <b>Enable Shake</b> once.)</div>
 
 <script>
 (() => {
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d", { alpha: false });
-  const btn = document.getElementById("enableMotion");
-  const hint = document.getElementById("hint");
 
-  // ✅ Put your image in the same GitHub repo folder named EXACTLY "photo.png"
+  const hint = document.getElementById("hint");
+  const btn = document.getElementById("enableMotion");
+
+  // IMPORTANT: Put photo.png in the same GitHub repo folder as this index.html
   const img = new Image();
   img.src = "photo.png";
 
@@ -55,10 +50,10 @@
 
   let width = 0, height = 0, dpr = 1;
 
-  // Snow physics
-  let burst = 0;           // energy added by tap/shake
-  let wind = 0;            // horizontal drift
-  const gravity = 0.55;    // base fall speed
+  // Shake energy (tap or phone motion adds to it)
+  let burst = 0;        // adds new flakes + speed
+  let wind = 0;         // horizontal drift
+  const gravity = 0.55; // base fall speed
 
   function resize() {
     dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -68,54 +63,55 @@
     canvas.height = height;
   }
 
-  // ✅ Ensure proper resize on rotate (iOS needs a delay)
+  // Make sure rotation works reliably (iOS needs a delay)
   window.addEventListener("resize", resize);
   window.addEventListener("orientationchange", () => setTimeout(resize, 300));
+
   resize();
 
   function orientationHint() {
     if (window.innerHeight > window.innerWidth) {
-      hint.innerHTML = "Rotate phone for a wider view ❄️ Tap to shake. On iPhone, press <b>Enable Shake</b> once.";
+      hint.innerHTML = "Tip: rotate to landscape for a wider view ❄️ (Tap or shake to make snow.)";
     } else {
-      hint.innerHTML = "Tap/click to “shake” the globe. On iPhone, press <b>Enable Shake</b> once.";
+      hint.innerHTML = "Tap/click to shake the globe ❄️ (On iPhone, press <b>Enable Shake</b> once.)";
     }
   }
   window.addEventListener("resize", orientationHint);
-  window.addEventListener("orientationchange", () => setTimeout(orientationHint, 350));
+  window.addEventListener("orientationchange", () => setTimeout(orientationHint, 300));
   orientationHint();
 
   function rand(min, max) { return Math.random() * (max - min) + min; }
 
-  function addFlake(count, xCenter = width/2, yStart = -20*dpr) {
+  function addFlake(count, xCenter = width / 2, yStart = -20 * dpr) {
     for (let i = 0; i < count && flakes.length < MAX_FLAKES; i++) {
       const r = rand(1.2, 4.4) * dpr;
       flakes.push({
-        x: xCenter + rand(-width*0.45, width*0.45),
-        y: yStart + rand(-height*0.25, 0),
+        x: xCenter + rand(-width * 0.45, width * 0.45),
+        y: yStart + rand(-height * 0.25, 0),
         r,
-        vy: rand(0.3, 1.25) * dpr,
+        vy: rand(0.3, 1.2) * dpr,
         vx: rand(-0.35, 0.35) * dpr,
-        wob: rand(0, Math.PI*2),
+        wob: rand(0, Math.PI * 2),
         wobSpeed: rand(0.006, 0.02),
-        opacity: rand(0.55, 0.95)
+        opacity: rand(0.5, 0.95)
       });
     }
   }
 
   // Initial snow
-  addFlake(300, width/2, rand(0, height));
+  addFlake(280, width / 2, rand(0, height));
 
   function burstSnow(strength = 1) {
     burst = Math.min(2.0, burst + 0.55 * strength);
-    wind += rand(-1.7, 1.7) * dpr * strength;
-    addFlake(Math.floor(90 * strength), width/2, -30*dpr);
+    wind += rand(-1.6, 1.6) * dpr * strength;
+    addFlake(Math.floor(110 * strength), width / 2, -30 * dpr);
   }
 
-  // Tap / click to shake
+  // Tap/click to burst
   function onTap(e) {
     const x = (e.touches ? e.touches[0].clientX : e.clientX) * dpr;
     burstSnow(1);
-    addFlake(60, x, -30*dpr);
+    addFlake(60, x, -30 * dpr);
   }
   canvas.addEventListener("click", onTap);
   canvas.addEventListener("touchstart", onTap, { passive: true });
@@ -125,23 +121,24 @@
   function handleMotion(ev) {
     const a = ev.accelerationIncludingGravity;
     if (!a) return;
+
     const ax = a.x || 0, ay = a.y || 0, az = a.z || 0;
+    const mag = Math.sqrt(ax * ax + ay * ay + az * az);
 
-    // Shake intensity (rough)
-    const mag = Math.sqrt(ax*ax + ay*ay + az*az);
+    // typical gravity magnitude ~9.8; shaking spikes higher
     const intensity = Math.max(0, mag - 11);
-
     const now = performance.now();
+
     if (intensity > 2.2 && now - lastShakeAt > 180) {
       lastShakeAt = now;
-      burstSnow(Math.min(1.7, intensity / 6));
+      burstSnow(Math.min(1.8, intensity / 6));
     }
 
-    // Tilt affects wind slightly
+    // tilt = wind
     wind += (ax * 0.02) * dpr;
   }
 
-  // iOS requires permission
+  // iOS permission flow + Android support
   btn.addEventListener("click", async () => {
     try {
       if (typeof DeviceMotionEvent !== "undefined" &&
@@ -159,25 +156,25 @@
     }
   });
 
-  function drawBackground() {
+  function drawBackgroundCover() {
     if (!img.complete || !img.naturalWidth) return;
 
-    // Cover draw (like background-size: cover)
-    const iw = img.naturalWidth * dpr;
-    const ih = img.naturalHeight * dpr;
+    // draw like CSS background-size: cover
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
 
-    const scale = Math.max(width / iw, height / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
+    const scale = Math.max(width / (iw * dpr), height / (ih * dpr));
+    const dw = iw * dpr * scale;
+    const dh = ih * dpr * scale;
     const dx = (width - dw) / 2;
     const dy = (height - dh) / 2;
 
     ctx.drawImage(img, dx, dy, dw, dh);
 
-    // Subtle vignette
+    // subtle vignette
     const g = ctx.createRadialGradient(
-      width/2, height/2, Math.min(width,height)*0.22,
-      width/2, height/2, Math.max(width,height)*0.7
+      width / 2, height / 2, Math.min(width, height) * 0.18,
+      width / 2, height / 2, Math.max(width, height) * 0.65
     );
     g.addColorStop(0, "rgba(0,0,0,0)");
     g.addColorStop(1, "rgba(0,0,0,0.35)");
@@ -186,17 +183,19 @@
   }
 
   function step() {
-    // Clear + photo
+    // Clear
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, width, height);
-    drawBackground();
 
-    // Decay burst and wind
+    // Draw photo
+    drawBackgroundCover();
+
+    // Decay burst & wind
     burst *= 0.93;
     wind *= 0.985;
 
-    // Add some flakes while burst is active
-    if (burst > 0.05) addFlake(Math.floor(8 + 30 * burst), width/2, -30*dpr);
+    // Add a few flakes while burst is active
+    if (burst > 0.05) addFlake(Math.floor(8 + 30 * burst), width / 2, -30 * dpr);
 
     // Update + draw flakes
     for (let i = flakes.length - 1; i >= 0; i--) {
@@ -205,18 +204,19 @@
       f.wob += f.wobSpeed;
       const wobX = Math.sin(f.wob) * 0.55 * dpr;
 
-      const fall = (gravity + f.vy) * (1 + burst * 1.2);
+      const fall = (gravity + f.vy) * (1 + burst * 1.25);
       f.y += fall;
       f.x += (f.vx + wind * 0.02) + wobX;
 
       // recycle
       if (f.y - f.r > height) {
-        f.y = -rand(10, 120) * dpr;
+        f.y = -rand(10, 140) * dpr;
         f.x = rand(0, width);
       }
-      if (f.x < -50*dpr) f.x = width + 50*dpr;
-      if (f.x > width + 50*dpr) f.x = -50*dpr;
+      if (f.x < -50 * dpr) f.x = width + 50 * dpr;
+      if (f.x > width + 50 * dpr) f.x = -50 * dpr;
 
+      // draw soft circle
       ctx.beginPath();
       ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255,255,255,${f.opacity})`;
@@ -228,7 +228,7 @@
 
   img.onload = () => requestAnimationFrame(step);
   img.onerror = () => {
-    alert('Could not load "photo.png". Upload it to the same folder as index.html and name it exactly photo.png');
+    alert("Could not load photo.png. Make sure photo.png is in the same folder as index.html in your GitHub repo.");
     requestAnimationFrame(step);
   };
 })();
