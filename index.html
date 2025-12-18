@@ -25,12 +25,18 @@
       color:#fff; font:14px system-ui; background:rgba(0,0,0,.35);
       border:1px solid rgba(255,255,255,.25); padding:10px 12px; border-radius:12px;
     }
+    .toggle {
+      position:fixed; top:12px; left:12px;
+      color:#fff; font:14px system-ui; background:rgba(0,0,0,.35);
+      border:1px solid rgba(255,255,255,.25); padding:10px 12px; border-radius:12px;
+    }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <button class="toggle" id="fitToggle">Fit: CONTAIN</button>
   <button class="btn" id="enableMotion">Enable Shake</button>
-  <div class="hint" id="hint">Tap/click to shake the globe ❄️ (On iPhone, press <b>Enable Shake</b> once.)</div>
+  <div class="hint" id="hint">Tap to shake ❄️ (On iPhone, press <b>Enable Shake</b> once.)</div>
 
 <script>
 (() => {
@@ -39,10 +45,24 @@
 
   const hint = document.getElementById("hint");
   const btn = document.getElementById("enableMotion");
+  const fitToggle = document.getElementById("fitToggle");
 
-  // IMPORTANT: Put photo.png in the same GitHub repo folder as this index.html
+  // Put photo.png in the same GitHub repo folder as this index.html
   const img = new Image();
   img.src = "photo.png";
+
+  // === IMAGE FIT MODE ===
+  // "contain" = no crop (may have bars)
+  // "cover"   = fill screen (crops)
+  let FIT_MODE = "contain";
+  function updateFitLabel() {
+    fitToggle.textContent = "Fit: " + (FIT_MODE === "contain" ? "CONTAIN" : "COVER");
+  }
+  fitToggle.addEventListener("click", () => {
+    FIT_MODE = (FIT_MODE === "contain") ? "cover" : "contain";
+    updateFitLabel();
+  });
+  updateFitLabel();
 
   // Snow particles
   const flakes = [];
@@ -51,9 +71,9 @@
   let width = 0, height = 0, dpr = 1;
 
   // Shake energy (tap or phone motion adds to it)
-  let burst = 0;        // adds new flakes + speed
-  let wind = 0;         // horizontal drift
-  const gravity = 0.55; // base fall speed
+  let burst = 0;
+  let wind = 0;
+  const gravity = 0.55;
 
   function resize() {
     dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -63,17 +83,15 @@
     canvas.height = height;
   }
 
-  // Make sure rotation works reliably (iOS needs a delay)
   window.addEventListener("resize", resize);
   window.addEventListener("orientationchange", () => setTimeout(resize, 300));
-
   resize();
 
   function orientationHint() {
     if (window.innerHeight > window.innerWidth) {
       hint.innerHTML = "Tip: rotate to landscape for a wider view ❄️ (Tap or shake to make snow.)";
     } else {
-      hint.innerHTML = "Tap/click to shake the globe ❄️ (On iPhone, press <b>Enable Shake</b> once.)";
+      hint.innerHTML = "Tap to shake ❄️ (On iPhone, press <b>Enable Shake</b> once.)";
     }
   }
   window.addEventListener("resize", orientationHint);
@@ -116,7 +134,7 @@
   canvas.addEventListener("click", onTap);
   canvas.addEventListener("touchstart", onTap, { passive: true });
 
-  // Device motion (shake)
+  // Device motion (shake only)
   let lastShakeAt = 0;
   function handleMotion(ev) {
     const a = ev.accelerationIncludingGravity;
@@ -133,9 +151,6 @@
       lastShakeAt = now;
       burstSnow(Math.min(1.8, intensity / 6));
     }
-
-    // tilt = wind
-    wind += (ax * 0.02) * dpr;
   }
 
   // iOS permission flow + Android support
@@ -156,39 +171,42 @@
     }
   });
 
-  function drawBackgroundCover() {
+  // ✅ Correct background fitting (no double-dpr)
+  function drawBackground() {
     if (!img.complete || !img.naturalWidth) return;
 
-    // draw like CSS background-size: cover
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
 
-    const scale = Math.max(width / (iw * dpr), height / (ih * dpr));
-    const dw = iw * dpr * scale;
-    const dh = ih * dpr * scale;
+    const sx = width / iw;
+    const sy = height / ih;
+
+    const scale = (FIT_MODE === "cover") ? Math.max(sx, sy) : Math.min(sx, sy);
+
+    const dw = iw * scale;
+    const dh = ih * scale;
+
     const dx = (width - dw) / 2;
     const dy = (height - dh) / 2;
 
     ctx.drawImage(img, dx, dy, dw, dh);
 
-    // subtle vignette
+    // Optional subtle vignette
     const g = ctx.createRadialGradient(
       width / 2, height / 2, Math.min(width, height) * 0.18,
-      width / 2, height / 2, Math.max(width, height) * 0.65
+      width / 2, height / 2, Math.max(width, height) * 0.70
     );
     g.addColorStop(0, "rgba(0,0,0,0)");
-    g.addColorStop(1, "rgba(0,0,0,0.35)");
+    g.addColorStop(1, "rgba(0,0,0,0.30)");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, width, height);
   }
 
   function step() {
-    // Clear
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, width, height);
 
-    // Draw photo
-    drawBackgroundCover();
+    drawBackground();
 
     // Decay burst & wind
     burst *= 0.93;
@@ -208,7 +226,6 @@
       f.y += fall;
       f.x += (f.vx + wind * 0.02) + wobX;
 
-      // recycle
       if (f.y - f.r > height) {
         f.y = -rand(10, 140) * dpr;
         f.x = rand(0, width);
@@ -216,7 +233,6 @@
       if (f.x < -50 * dpr) f.x = width + 50 * dpr;
       if (f.x > width + 50 * dpr) f.x = -50 * dpr;
 
-      // draw soft circle
       ctx.beginPath();
       ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255,255,255,${f.opacity})`;
